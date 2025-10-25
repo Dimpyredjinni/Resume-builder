@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GPT Dual-Mode Resume Builder</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F9FAFB;
+  --card:#FFFFFF;
+  --primary:#1E3A8A;
+  --accent:#2563EB;
+  --text:#111827;
+  --muted:#6B7280;
+  --section-bg:#F3F4F6;
+}
+body{
+  margin:0;
+  font-family:'Segoe UI','Arial',sans-serif;
+  background:var(--bg);
+  color:var(--text);
+}
+.app{
+  display:grid;
+  grid-template-columns:420px 1fr;
+  gap:20px;
+  padding:20px;
+  height:100vh;
+}
+.panel{
+  background:var(--card);
+  border-radius:12px;
+  padding:16px;
+  overflow:auto;
+  box-shadow:0 4px 12px rgba(0,0,0,0.05);
+}
+h2{margin:6px 0 12px;font-size:16px;color:var(--primary)}
+label{display:block;font-size:13px;color:var(--muted);margin:8px 0 6px}
+input[type=text],textarea{width:100%;padding:10px;border-radius:8px;border:1px solid rgba(0,0,0,0.1);background:transparent;color:var(--text)}
+textarea{min-height:80px;resize:vertical}
+.btn{display:inline-block;padding:8px 12px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-weight:600;cursor:pointer;margin-top:10px}
+.controls{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.previewWrap{padding:28px;overflow:auto}
+.resume{
+  max-width:900px;
+  margin:0 auto;
+  background:#fff;
+  color:var(--text);
+  padding:28px;
+  border-radius:8px;
+  box-shadow:0 6px 20px rgba(0,0,0,0.05);
+}
+.resume h2,.resume h3{color:var(--primary)}
+.resume .header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.name{font-size:28px;font-weight:700}
+.title{color:var(--muted);font-weight:600}
+.contact{margin-top:6px;font-size:13px;color:var(--muted)}
+.section{margin-top:18px;padding:12px;border-radius:8px;background:var(--section-bg)}
+.section h3{margin:0 0 8px;font-size:15px;color:var(--primary)}
+.item{margin-bottom:10px}
+.item .meta{font-size:13px;color:var(--muted)}
+.skills{display:flex;gap:8px;flex-wrap:wrap}
+.skill{padding:6px 8px;border-radius:999px;background:#E0E7FF;color:var(--primary);font-weight:600;font-size:12px}
+.ats-mode body{background:#fff;color:#111827}
+.ats-mode .panel{box-shadow:none;border-radius:0;background:#fff}
+.ats-mode .resume{box-shadow:none;border-radius:0;padding:20px;width:100%;font-size:12pt}
+.ats-mode .section{background:#fff;padding:0;margin-top:8px}
+.ats-mode .skill{background:#f3f4f6;color:#111827;font-weight:normal;font-size:10pt}
+@media(max-width:900px){.app{grid-template-columns:1fr;grid-auto-rows:1fr;height:100%}}
+</style>
+</head>
+<body>
+<div class="app">
+<div class="panel" id="editor">
+<h2>Resume Editor</h2>
+<label>Full name</label>
+<input id="name" type="text" value="Your Name">
+<label>Job title / headline</label>
+<input id="headline" type="text" value="Software Engineer">
+<label>Contact (email, phone, website)</label>
+<input id="contact" type="text" value="you@email.com • +91 98765 43210 • github.com/you">
+<label>Professional summary</label>
+<textarea id="summary">A concise summary highlighting skills and achievements.</textarea>
+<div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px">
+<h3>Experience</h3>
+<button class="btn" id="addExp">+ Add</button>
+</div>
+<div id="expList"></div>
+<div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px">
+<h3>Education</h3>
+<button class="btn" id="addEdu">+ Add</button>
+</div>
+<div id="eduList"></div>
+<label style="margin-top:12px">Skills (comma separated)</label>
+<input id="skills" type="text" value="JavaScript, React, Node.js, CSS">
+<label style="margin-top:12px">Projects & Achievements</label>
+<textarea id="projects">Project name — short 1-line description.</textarea>
+<div class="controls">
+<button class="btn" id="apply">Update Preview</button>
+<button class="btn" id="print">Download PDF</button>
+<button class="btn" id="toggleMode">Switch to ATS Mode</button>
+</div>
+<p class="muted small">Toggle between Human Mode (styled) and ATS Mode (bot-friendly) before downloading.</p>
+</div>
+<div class="panel previewWrap">
+<h2>Live Preview</h2>
+<div id="previewArea" class="resume"></div>
+</div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.3/html2pdf.bundle.min.js"></script>
+<script>
+let atsMode=false;
+function toggleMode(){
+ atsMode=!atsMode;
+ if(atsMode){document.body.classList.add('ats-mode');document.getElementById('toggleMode').innerText='Switch to Human Mode';}
+ else{document.body.classList.remove('ats-mode');document.getElementById('toggleMode').innerText='Switch to ATS Mode';}
+ render();
+}
+document.getElementById('toggleMode').addEventListener('click',toggleMode);
+function makeExpTemplate(data){
+ const div=document.createElement('div');
+ div.className='expItem';
+ div.style.borderTop='1px dashed rgba(0,0,0,0.1)';
+ div.style.paddingTop='10px';
+ div.innerHTML=`<label>Role / Company</label><input data-field='role' type='text' value='${data.role||"Senior Engineer • ACME Corp"}'><label>Dates & Location</label><input data-field='dates' type='text' value='${data.dates||"2021 — Present"}'><label>Summary</label><textarea data-field='desc'>${data.desc||"Worked on core projects with measurable impact."}</textarea><button class='btn remove'>Remove</button>`;
+ div.querySelector('.remove').onclick=()=>div.remove();
+ return div;
+}
+function makeEduTemplate(data){
+ const div=document.createElement('div');
+ div.className='eduItem';
+ div.style.borderTop='1px dashed rgba(0,0,0,0.1)';
+ div.style.paddingTop='10px';
+ div.innerHTML=`<label>Degree / Institution</label><input data-field='degree' type='text' value='${data.degree||"B.Tech • Example University"}'><label>Dates</label><input data-field='dates' type='text' value='${data.dates||"2015 — 2019"}'><button class='btn remove'>Remove</button>`;
+ div.querySelector('.remove').onclick=()=>div.remove();
+ return div;
+}
+const expList=document.getElementById('expList');
+const eduList=document.getElementById('eduList');
+document.getElementById('addExp').onclick=()=>expList.appendChild(makeExpTemplate({}));
+document.getElementById('addEdu').onclick=()=>eduList.appendChild(makeEduTemplate({}));
+function render(){
+ const name=document.getElementById('name').value;
+ const headline=document.getElementById('headline').value;
+ const contact=document.getElementById('contact').value;
+ const summary=document.getElementById('summary').value;
+ const skills=document.getElementById('skills').value;
+ const projects=document.getElementById('projects').value;
+ const exps=[];
+ document.querySelectorAll('#expList .expItem').forEach(node=>{
+  exps.push({role:node.querySelector('[data-field=role]').value,dates:node.querySelector('[data-field=dates]').value,desc:node.querySelector('[data-field=desc]').value});
+ });
+ const edus=[];
+ document.querySelectorAll('#eduList .eduItem').forEach(node=>{
+  edus.push({degree:node.querySelector('[data-field=degree]').value,dates:node.querySelector('[data-field=dates]').value});
+ });
+ const container=document.createElement('div');
+ container.className='resume';
+ container.innerHTML=`<div class="header"><div><div class="name">${name}</div><div class="title">${headline}</div><div class="contact">${contact}</div></div></div><div class="section"><h3>Summary</h3><div class="item"><div>${summary.replace(/\n/g,'<br>')}</div></div></div><div class="section"><h3>Experience</h3>${exps.map(e=>`<div class="item"><div style="font-weight:700">${e.role}</div><div class="meta">${e.dates}</div><div style="margin-top:6px">${e.desc.replace(/\n/g,'<br>')}</div></div>`).join('')}</div><div class="section"><h3>Education</h3>${edus.map(e=>`<div class="item"><div style="font-weight:700">${e.degree}</div><div class="meta">${e.dates}</div></div>`).join('')}</div><div class="section"><h3>Skills</h3><div class="skills">${skills.split(',').map(s=>s.trim()).filter(Boolean).map(s=>`<div class="skill">${s}</div>`).join('')}</div></div><div class="section"><h3>Projects & Achievements</h3><div class="item">${projects.replace(/\n/g,'<br>')}</div></div>`;
+ const preview=document.getElementById('previewArea');
+ preview.innerHTML='';
+ preview.appendChild(container);
+}
+document.getElementById('apply').addEventListener('click',render);
+document.getElementById('print').addEventListener('click', async()=>{
+ const el=document.getElementById('previewArea');
+ el.classList.add('print-ready');
+ await new Promise(r=>setTimeout(r,50));
+ html2pdf().set({margin:[10,10,10,10],filename:(document.getElementById('name').value||'resume')+'.pdf',image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,useCORS:true},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}}).from(el).save().finally(()=>el.classList.remove('print-ready'));
+});
+expList.appendChild(makeExpTemplate({role:'Senior Frontend Engineer • TopCo',dates:'2022 — Present • Remote',desc:'Led frontend team; improved load time by 40% and increased conversions.'}));
+eduList.appendChild(makeEduTemplate({degree:'B.Tech, Computer Science • IIT Example',dates:'2015 — 2019'}));
+render();
+</script>
+</body>
+</html>
